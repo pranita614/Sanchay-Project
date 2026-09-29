@@ -1,0 +1,6 @@
+{
+  "/explore/page": "app/explore/page.js",
+  "/staff/login/page": "app/staff/login/page.js",
+  "/staff/dashboard/page": "app/staff/dashboard/page.js",
+  "/staff/collections/page": "app/staff/collections/page.js"
+}

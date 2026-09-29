@@ -1,0 +1,569 @@
+// Prisma Schema for SANCHAY - Digital Heritage Archive of Dr. B. R. Ambedkar
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgvector(map: "vector")]
+}
+
+enum RoleType {
+  SUPER_ADMIN
+  MUSEUM_MANAGER
+  CURATOR
+  CONTENT_EDITOR
+  MEDIA_MANAGER
+  TRANSLATOR
+  REVIEWER
+  PUBLIC_USER
+}
+
+enum ContentStatus {
+  DRAFT
+  UNDER_REVIEW
+  APPROVED
+  PUBLISHED
+  ARCHIVED
+}
+
+enum MediaType {
+  DOCUMENT
+  BOOK
+  WRITING
+  SPEECH
+  LETTER
+  PHOTOGRAPH
+  AUDIO
+  VIDEO
+  PERSONAL_BELONGING
+  ARCHIVAL_RECORD
+}
+
+model User {
+  id            String         @id @default(uuid())
+  email         String         @unique
+  passwordHash  String
+  fullName      String
+  role          RoleType       @default(PUBLIC_USER)
+  avatarUrl     String?
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  createdItems  Document[]     @relation("CreatedDocuments")
+  approvedItems Document[]     @relation("ApprovedDocuments")
+  reviews       Review[]
+  auditLogs     AuditLog[]
+  bookmarks     Bookmark[]
+}
+
+model Role {
+  id          String       @id @default(uuid())
+  name        RoleType     @unique
+  description String
+  permissions Permission[]
+}
+
+model Permission {
+  id          String   @id @default(uuid())
+  action      String
+  resource    String
+  roles       Role[]
+}
+
+model Collection {
+  id          String        @id @default(uuid())
+  title       String
+  slug        String        @unique
+  description String
+  coverImage  String?
+  type        MediaType     @default(DOCUMENT)
+  itemCount   Int           @default(0)
+  isFeatured  Boolean       @default(false)
+  status      ContentStatus @default(PUBLISHED)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  documents   Document[]
+  books       Book[]
+  writings    Writing[]
+  speeches    Speech[]
+  letters     Letter[]
+  photos      Photograph[]
+  audios      Audio[]
+  videos      Video[]
+}
+
+model Document {
+  id             String        @id @default(uuid())
+  title          String
+  slug           String        @unique
+  description    String
+  type           MediaType     @default(DOCUMENT)
+  date           String?
+  year           Int?
+  language       String        @default("English")
+  volume         String?       // BAWS Volume number e.g. "Vol. 1"
+  pageCount      Int?          @default(0)
+  coverImage     String?
+  pdfUrl         String?
+  sourceName     String        @default("BAWS (Official)")
+  sourceUrl      String?
+  rights         String        @default("Public Archival Domain")
+  status         ContentStatus @default(PUBLISHED)
+  isFeatured     Boolean       @default(false)
+  viewCount      Int           @default(0)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  collectionId   String?
+  collection     Collection?   @relation(fields: [collectionId], references: [id])
+  createdById    String?
+  createdBy      User?         @relation("CreatedDocuments", fields: [createdById], references: [id])
+  approvedById   String?
+  approvedBy     User?         @relation("ApprovedDocuments", fields: [approvedById], references: [id])
+
+  pages          DocumentPage[]
+  ocrRecords     OCRRecord[]
+  translations   Translation[]
+  citations      Citation[]
+  aiChunks       AIChunk[]
+  reviews        Review[]
+  topics         TopicToDocument[]
+  tags           TagToDocument[]
+}
+
+model DocumentPage {
+  id          String   @id @default(uuid())
+  documentId  String
+  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  pageNumber  Int
+  imageUrl    String
+  rawText     String?
+  ocrStatus   String   @default("COMPLETED")
+  confidence  Float    @default(0.98)
+  createdAt   DateTime @default(now())
+}
+
+model Book {
+  id          String      @id @default(uuid())
+  title       String
+  originalTitle String?
+  volume      String?
+  year        Int?
+  publisher   String?
+  description String
+  coverImage  String?
+  tableOfContents Json?
+  collectionId String?
+  collection  Collection? @relation(fields: [collectionId], references: [id])
+  createdAt   DateTime    @default(now())
+}
+
+model Writing {
+  id          String   @id @default(uuid())
+  title       String
+  category    String   // e.g. "Social Critique", "Economics", "Constitutional"
+  year        Int?
+  volume      String?
+  content     String
+  collectionId String?
+  collection  Collection? @relation(fields: [collectionId], references: [id])
+  createdAt   DateTime @default(now())
+}
+
+model Speech {
+  id          String   @id @default(uuid())
+  title       String
+  location    String?
+  date        String?
+  year        Int?
+  volume      String?
+  context     String?
+  fullText    String
+  audioUrl    String?
+  collectionId String?
+  collection  Collection? @relation(fields: [collectionId], references: [id])
+  createdAt   DateTime @default(now())
+}
+
+model Letter {
+  id          String   @id @default(uuid())
+  title       String
+  sender      String   @default("Dr. B. R. Ambedkar")
+  recipient   String
+  date        String
+  year        Int?
+  location    String?
+  subject     String
+  content     String
+  scanUrl     String?
+  collectionId String?
+  collection  Collection? @relation(fields: [collectionId], references: [id])
+  createdAt   DateTime @default(now())
+}
+
+model Photograph {
+  id          String   @id @default(uuid())
+  title       String
+  caption     String
+  date        String?
+  year        Int?
+  imageUrl    String
+  location    String?
+  category    String   // e.g. "Portraits", "Constitutional Work", "Social Reform"
+  credit      String   @default("BAWS Archive")
+  collectionId String?
+  collection  Collection? @relation(fields: [collectionId], references: [id])
+  createdAt   DateTime @default(now())
+}
+
+model Audio {
+  id          String               @id @default(uuid())
+  title       String
+  speaker     String               @default("Dr. B. R. Ambedkar")
+  date        String?
+  year        Int?
+  location    String?
+  duration    String               // e.g. "45:20"
+  durationSeconds Int              @default(2720)
+  audioUrl    String
+  thumbnailUrl String?
+  language    String               @default("English")
+  source      String               @default("Official BAWS Audio Archive")
+  rights      String               @default("Preservation Digital Domain")
+  collectionId String?
+  collection  Collection?          @relation(fields: [collectionId], references: [id])
+  segments    TranscriptSegment[]
+  createdAt   DateTime             @default(now())
+}
+
+model Video {
+  id          String         @id @default(uuid())
+  title       String
+  date        String?
+  year        Int?
+  duration    String         // e.g. "58:10"
+  durationSeconds Int        @default(3490)
+  videoUrl    String
+  thumbnailUrl String?
+  description String
+  tags        String[]
+  collectionId String?
+  collection  Collection?    @relation(fields: [collectionId], references: [id])
+  chapters    VideoChapter[]
+  captions    Caption[]
+  createdAt   DateTime       @default(now())
+}
+
+model Transcript {
+  id          String   @id @default(uuid())
+  targetId    String   // audioId or videoId
+  targetType  String   // "AUDIO" or "VIDEO"
+  language    String   @default("English")
+  fullText    String
+  createdAt   DateTime @default(now())
+}
+
+model TranscriptSegment {
+  id        String   @id @default(uuid())
+  audioId   String?
+  audio     Audio?   @relation(fields: [audioId], references: [id], onDelete: Cascade)
+  videoId   String?
+  timestamp String   // e.g. "12:34"
+  timeInSeconds Float
+  speaker   String?
+  text      String
+}
+
+model VideoChapter {
+  id        String   @id @default(uuid())
+  videoId   String
+  video     Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  timestamp String   // e.g. "08:12"
+  timeInSeconds Float
+  title     String
+}
+
+model Caption {
+  id        String   @id @default(uuid())
+  videoId   String
+  video     Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  language  String   @default("English")
+  srtUrl    String?
+  content   Json?
+}
+
+model TimelineEvent {
+  id               String   @id @default(uuid())
+  year             Int
+  date             String
+  title            String
+  description      String
+  category         String   // "Early Life", "Education", "Social Reform", "Political Career", "Constitution", "Writings", "Speeches", "Later Years"
+  location         String?
+  imageUrl         String?
+  source           String   @default("BAWS Historical Record")
+  relatedDocId     String?
+  relatedAudioId   String?
+  relatedVideoId   String?
+  createdAt        DateTime @default(now())
+}
+
+model Topic {
+  id          String            @id @default(uuid())
+  name        String            @unique
+  slug        String            @unique
+  description String?
+  documents   TopicToDocument[]
+}
+
+model TopicToDocument {
+  topicId    String
+  documentId String
+  topic      Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@id([topicId, documentId])
+}
+
+model Tag {
+  id          String          @id @default(uuid())
+  name        String          @unique
+  documents   TagToDocument[]
+}
+
+model TagToDocument {
+  tagId      String
+  documentId String
+  tag        Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@id([tagId, documentId])
+}
+
+model Source {
+  id               String   @id @default(uuid())
+  sourceName       String
+  sourceUrl        String?
+  sourceIdentifier String?
+  sourceType       String
+  retrievedAt      DateTime @default(now())
+  rights           String
+  license          String
+  credit           String
+  provenanceNotes  String
+}
+
+model Citation {
+  id          String   @id @default(uuid())
+  documentId  String
+  document    Document @relation(fields: [documentId], references: [id])
+  volume      String
+  pageNumber  Int?
+  quoteText   String
+  citationFormat String
+}
+
+model OCRRecord {
+  id          String   @id @default(uuid())
+  documentId  String
+  document    Document @relation(fields: [documentId], references: [id])
+  originalImageUrl String
+  ocrExtractedText String
+  confidence  Float    @default(0.95)
+  reviewedBy  String?
+  status      String   @default("REVIEWED") // DRAFT, REVIEWED, APPROVED
+  createdAt   DateTime @default(now())
+}
+
+model Translation {
+  id          String   @id @default(uuid())
+  documentId  String
+  document    Document @relation(fields: [documentId], references: [id])
+  targetLanguage String
+  originalText String
+  translatedText String
+  status      String   @default("APPROVED") // DRAFT, REVIEWED, APPROVED
+  reviewedBy  String?
+  createdAt   DateTime @default(now())
+}
+
+model Quote {
+  id          String   @id @default(uuid())
+  quoteText   String
+  sourceWork  String   // e.g. "Annihilation of Caste"
+  volume      String?  // e.g. "Vol. 1"
+  pageNumber  Int?     // e.g. 45
+  year        Int?
+  topic       String?
+  verified    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+}
+
+model Vow {
+  id          String   @id @default(uuid())
+  number      Int      @unique // 1 to 22
+  vowText     String
+  marathiText String?
+  hindiText   String?
+  source      String   @default("22 Vows Speech, Deekshabhoomi Nagpur 1956")
+  context     String
+}
+
+model BahishkritBharatItem {
+  id          String   @id @default(uuid())
+  issueNumber Int
+  date        String
+  title       String
+  description String
+  ocrText     String
+  scanUrl     String?
+  createdAt   DateTime @default(now())
+}
+
+model SwarajItem {
+  id          String   @id @default(uuid())
+  issueNumber Int
+  date        String
+  title       String
+  description String
+  content     String
+  createdAt   DateTime @default(now())
+}
+
+model CritiqueItem {
+  id          String   @id @default(uuid())
+  title       String
+  year        Int?
+  topic       String
+  summary     String
+  source      String
+  fullText    String
+  createdAt   DateTime @default(now())
+}
+
+model MindMapNode {
+  id          String        @id @default(uuid())
+  label       String
+  category    String
+  description String
+  docCount    Int           @default(0)
+  edgesFrom   MindMapEdge[] @relation("EdgesFrom")
+  edgesTo     MindMapEdge[] @relation("EdgesTo")
+}
+
+model MindMapEdge {
+  id          String      @id @default(uuid())
+  fromId      String
+  toId        String
+  relation    String
+  fromNode    MindMapNode @relation("EdgesFrom", fields: [fromId], references: [id], onDelete: Cascade)
+  toNode      MindMapNode @relation("EdgesTo", fields: [toId], references: [id], onDelete: Cascade)
+}
+
+model Embedding {
+  id          String   @id @default(uuid())
+  chunkId     String   @unique
+  vector      Unsupported("vector(1536)")?
+  createdAt   DateTime @default(now())
+}
+
+model AIChunk {
+  id          String   @id @default(uuid())
+  documentId  String
+  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  chunkIndex  Int
+  content     String
+  metadata    Json
+  isIndexed   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+}
+
+model Review {
+  id          String        @id @default(uuid())
+  documentId  String
+  document    Document      @relation(fields: [documentId], references: [id])
+  reviewerId  String
+  reviewer    User          @relation(fields: [reviewerId], references: [id])
+  status      ContentStatus
+  comments    String
+  createdAt   DateTime      @default(now())
+}
+
+model Bookmark {
+  id          String   @id @default(uuid())
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
+  itemType    String   // "DOCUMENT", "AUDIO", "VIDEO", "QUOTE", "TIMELINE"
+  itemId      String
+  title       String
+  metadata    Json?
+  createdAt   DateTime @default(now())
+}
+
+model Recommendation {
+  id          String   @id @default(uuid())
+  title       String
+  type        String
+  category    String
+  targetUrl   String
+  imageUrl    String?
+  reason      String
+}
+
+model SearchLog {
+  id          String   @id @default(uuid())
+  query       String
+  searchType  String   // KEYWORD, SEMANTIC, HYBRID
+  resultsCount Int
+  createdAt   DateTime @default(now())
+}
+
+model Analytics {
+  id          String   @id @default(uuid())
+  metric      String   // e.g. "DOC_VIEW", "AUDIO_PLAY", "AI_QUERY", "TTS_GEN"
+  targetId    String?
+  details     Json?
+  timestamp   DateTime @default(now())
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
+  action      String   // "CREATE", "UPDATE", "DELETE", "LOGIN", "APPROVE", "INDEX"
+  resource    String   // "Document", "Audio", "Translation", etc.
+  resourceId  String?
+  details     String
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+}
+
+model StudyPack {
+  id          String          @id @default(uuid())
+  shareToken  String          @unique
+  title       String          @default("My Study Pack")
+  items       StudyPackItem[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+}
+
+model StudyPackItem {
+  id          String    @id @default(uuid())
+  studyPackId String
+  studyPack   StudyPack @relation(fields: [studyPackId], references: [id], onDelete: Cascade)
+  itemType    String    // DOCUMENT, AUDIO, VIDEO, PHOTOGRAPH, TIMELINE, QUOTE, AI_ANSWER, VOW, OTHER
+  itemId      String
+  title       String
+  description String?
+  url         String
+  metadata    Json?
+  position    Int       @default(0)
+  createdAt   DateTime  @default(now())
+}
+
